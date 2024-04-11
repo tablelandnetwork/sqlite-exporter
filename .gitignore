@@ -1,0 +1,5 @@
+*.db*
+schemas.go
+schemas.so
+sqlite-exporter
+output

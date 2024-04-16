@@ -2,19 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path"
 	"plugin"
-	"time"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/parquet-go/parquet-go"
-	"github.com/tablelandnetwork/basin-cli/pkg/signing"
 )
 
 type Sink interface {
@@ -143,9 +140,8 @@ func (mock *MockSink) Send(_ context.Context, _ string) error {
 }
 
 type BasinSink struct {
-	provider   string
-	vault      string
-	privateKey *ecdsa.PrivateKey
+	provider string
+	machine  string
 }
 
 func (s *BasinSink) Send(ctx context.Context, filepath string) error {
@@ -160,29 +156,19 @@ func (s *BasinSink) Send(ctx context.Context, filepath string) error {
 		return err
 	}
 
+	url := fmt.Sprintf("%s/v1/os/%s/%s", s.provider, s.machine, strings.TrimSuffix(path.Base(f.Name()), ".parquet"))
 	req, err := http.NewRequestWithContext(
 		ctx,
-		http.MethodPost,
-		fmt.Sprintf("%s/vaults/%s/events", s.provider, s.vault),
+		http.MethodPut,
+		url,
 		f,
 	)
 	if err != nil {
 		return fmt.Errorf("could not create request: %s", err)
 	}
 
-	req.Header.Add("filename", f.Name())
+	req.Header.Add("X-ADM-BroadcastMode", "commit")
 
-	signer := signing.NewSigner(s.privateKey)
-	signatureBytes, err := signer.SignFile(filepath)
-	if err != nil {
-		return fmt.Errorf("signing the file: %s", err)
-	}
-	signature := hex.EncodeToString(signatureBytes)
-
-	q := req.URL.Query()
-	q.Add("timestamp", fmt.Sprint(time.Now().UTC().Unix()))
-	q.Add("signature", fmt.Sprint(signature))
-	req.URL.RawQuery = q.Encode()
 	req.ContentLength = fi.Size()
 
 	client := &http.Client{
@@ -197,17 +183,7 @@ func (s *BasinSink) Send(ctx context.Context, filepath string) error {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode != http.StatusCreated {
-		type response struct {
-			Error string
-		}
-		var r response
-		if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
-			return fmt.Errorf("failed to decode response: %s", err)
-		}
-
-		return fmt.Errorf(r.Error)
-	}
+	fmt.Println(resp.StatusCode)
 
 	return nil
 }

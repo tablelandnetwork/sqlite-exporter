@@ -21,7 +21,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	rows, err := db.QueryContext(context.Background(), "select external_link, name from read_parquet(['https://bafkreifc4vdzhoibzpaszxt3i3s4bi7uzpgjg52hgoo6xp4zm6uh4mt5de.ipfs.w3s.link/'])")
+	rows, err := db.QueryContext(context.Background(), "select *from read_parquet(['http://34.106.97.87:8002/v1/os/t2gh7m2iaqvwv2oexsaetncmdm6hhac7k6ne3teda/pilot_sessions_80001_7137'])")
 	if err != nil {
 		log.Fatal(err)
 	}

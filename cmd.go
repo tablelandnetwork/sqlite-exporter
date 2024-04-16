@@ -7,7 +7,6 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfave/cli/v2"
 )
 
@@ -71,7 +70,7 @@ func newGenerateCommand() *cli.Command {
 
 			tmpl, _ := template.New("schemas.tmpl").Funcs(funcMap).ParseFiles("schemas.tmpl")
 
-			f, err := os.OpenFile("schemas.go", os.O_CREATE|os.O_RDWR, 0x666)
+			f, err := os.OpenFile("schemas.go", os.O_CREATE|os.O_RDWR, 0o777)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -89,7 +88,7 @@ func newGenerateCommand() *cli.Command {
 func newExportCommand() *cli.Command {
 	var upload bool
 	var tables *cli.StringSlice
-	var privateKey, vault string
+	var machine string
 	return &cli.Command{
 		Name:        "export",
 		Usage:       "Export tables",
@@ -113,19 +112,11 @@ func newExportCommand() *cli.Command {
 				Value:       nil,
 			},
 			&cli.StringFlag{
-				Name:        "basin-private-key",
+				Name:        "machine",
 				Category:    "REQUIRED:",
-				Usage:       "Basin's private key",
+				Usage:       "machine's hash",
 				DefaultText: "empty",
-				Destination: &privateKey,
-				Value:       "",
-			},
-			&cli.StringFlag{
-				Name:        "basin-vault",
-				Category:    "REQUIRED:",
-				Usage:       "Basin's vault",
-				DefaultText: "empty",
-				Destination: &vault,
+				Destination: &machine,
 				Value:       "",
 			},
 		},
@@ -137,16 +128,11 @@ func newExportCommand() *cli.Command {
 				log.Fatal(err)
 			}
 
-			privateKey, err := crypto.HexToECDSA(privateKey)
-			if err != nil {
-				log.Fatal(err)
-			}
 			sink := Sink(&MockSink{})
 			if upload {
 				sink = &BasinSink{
-					provider:   "https://basin.tableland.xyz",
-					vault:      vault,
-					privateKey: privateKey,
+					provider: "http://34.106.97.87:8002",
+					machine:  machine,
 				}
 			}
 

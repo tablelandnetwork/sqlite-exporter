@@ -16,11 +16,10 @@ var version = "dev"
 
 func main() {
 	cliApp := &cli.App{
-		Name:    "parquet-exporter",
+		Name:    "sqlite-exporter",
 		Usage:   "Export SQLite tables to Parquet",
 		Version: version,
 		Commands: []*cli.Command{
-			newGenerateCommand(),
 			newExportCommand(),
 		},
 	}

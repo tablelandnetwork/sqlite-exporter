@@ -6,41 +6,41 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"unicode"
 
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/exp/slices"
 )
 
+// SQLite represents a SQLite Database.
 type SQLite struct {
-	db     *sqlx.DB
-	tables []string
+	db *sqlx.DB
 }
 
-func NewSQLite(path string, tables []string) (*SQLite, error) {
+// NewSQLite creates a new SQLite object.
+func NewSQLite(path string) (*SQLite, error) {
 	db, err := sqlx.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 
-	return &SQLite{db, tables}, nil
+	return &SQLite{db}, nil
 }
 
-func (s *SQLite) GetTables(ctx context.Context) (TablesIter, error) {
+// GetTablesIterator returns an iterator of tables.
+func (s *SQLite) GetTablesIterator(ctx context.Context, tables []string) (TablesIter, error) {
 	sql := `SELECT name AS table_name
 				FROM sqlite_master
 				WHERE type = 'table'
 				AND name NOT LIKE 'sqlite?_%' escape '?' 
 				AND name NOT LIKE 'system?_%' escape '?'`
-	if len(s.tables) > 0 {
-		tables := make([]string, len(s.tables))
-		for i, t := range s.tables {
-			tables[i] = fmt.Sprintf("'%s'", t)
+	if len(tables) > 0 {
+		t := make([]string, len(tables))
+		for i, table := range tables {
+			t[i] = fmt.Sprintf("'%s'", table)
 		}
-		sql = sql + fmt.Sprintf(" AND name IN (%s)", strings.Join(tables, ","))
+		sql = sql + fmt.Sprintf(" AND name IN (%s)", strings.Join(t, ","))
 	}
 
-	rows, err := s.db.QueryxContext(ctx, sql)
+	rows, err := s.db.QueryContext(ctx, sql)
 	if err != nil {
 		return TablesIter{}, fmt.Errorf("query tables: %s", err)
 	}
@@ -48,8 +48,9 @@ func (s *SQLite) GetTables(ctx context.Context) (TablesIter, error) {
 	return TablesIter{rows}, nil
 }
 
-func (s *SQLite) GetRowsByTable(ctx context.Context, table string) (*sqlx.Rows, error) {
-	rows, err := s.db.QueryxContext(ctx, fmt.Sprintf("SELECT * FROM %s", table))
+// GetRowsByTable returns an iterators of all rows of a specific table.
+func (s *SQLite) GetRowsByTable(ctx context.Context, table string) (*sql.Rows, error) {
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf("SELECT * FROM %s", table))
 	if err != nil {
 		return nil, fmt.Errorf("query tables: %s", err)
 	}
@@ -57,6 +58,7 @@ func (s *SQLite) GetRowsByTable(ctx context.Context, table string) (*sqlx.Rows, 
 	return rows, nil
 }
 
+// GetColumnsByTable returns the columns of a table.
 func (s *SQLite) GetColumnsByTable(ctx context.Context, table string) ([]Column, error) {
 	type column struct {
 		CID          int            `db:"cid"`
@@ -65,13 +67,18 @@ func (s *SQLite) GetColumnsByTable(ctx context.Context, table string) ([]Column,
 		NotNull      int            `db:"notnull"`
 		DefaultValue sql.NullString `db:"dflt_value"`
 		PrimaryKey   int            `db:"pk"`
+		Hidden       int            `db:"hidden"`
 	}
 
-	rows, err := s.db.QueryxContext(ctx, fmt.Sprintf("SELECT * FROM PRAGMA_TABLE_INFO('%s')", table))
+	rows, err := s.db.QueryxContext(ctx, fmt.Sprintf("SELECT * FROM PRAGMA_TABLE_XINFO('%s')", table))
 	if err != nil {
 		return nil, fmt.Errorf("query tables: %s", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Println(err)
+		}
+	}()
 
 	columns := []Column{}
 	for rows.Next() {
@@ -103,10 +110,12 @@ func (s *SQLite) GetColumnsByTable(ctx context.Context, table string) ([]Column,
 	return columns, nil
 }
 
+// TablesIter represents an iterator of tables.
 type TablesIter struct {
-	rows *sqlx.Rows
+	rows *sql.Rows
 }
 
+// Next returns the next table of the iterator.
 func (i *TablesIter) Next() (string, bool) {
 	hasNext := i.rows.Next()
 	if hasNext {
@@ -120,10 +129,12 @@ func (i *TablesIter) Next() (string, bool) {
 	return "", false
 }
 
+// Close closes the table's iterator.
 func (i *TablesIter) Close() error {
 	return i.rows.Close()
 }
 
+// Column represents information of a column of a database's table.
 type Column struct {
 	OrdinalPosition int            `db:"ordinal_position"`
 	Name            string         `db:"column_name"`
@@ -133,88 +144,25 @@ type Column struct {
 	ColumnKey       string         `db:"column_key"` // mysql specific
 }
 
-func (c *Column) IsInteger() bool {
-	return slices.Contains([]string{
-		"integer",
-		"int",
-	}, strings.ToLower(c.DataType))
+// GoName returns the name of the column in Golang's format.
+func (c *Column) GoName() string {
+	return camelCaseString(c.Name)
 }
 
-func (c *Column) IsFloat() bool {
-	return slices.Contains([]string{
-		"real",
-		"numeric",
-	}, strings.ToLower(c.DataType))
-}
-
-func (s *Column) IsTemporal() bool {
-	return false
-}
-
-type Formatted struct {
-	text       string
-	isNullable bool
-	isTemporal bool
-	tags       string
-}
-
-func (f Formatted) Text() string {
-	return f.text
-}
-
-func (f Formatted) Tags() string {
-	return f.tags
-}
-
-func (c *Column) Format() Formatted {
-	var isNullable, isTemporal bool
-	var goType string
-	columnName := camelCaseString(c.Name)
-	if !unicode.IsLetter(rune(columnName[0])) {
-		columnName = "X" + columnName
+func camelCaseString(s string) string {
+	if s == "" {
+		return s
 	}
 
-	if c.IsInteger() {
-		goType = "int"
-		if c.IsNullable {
-			goType = "*int"
-			isNullable = true
-		}
-	} else if c.IsFloat() {
-		goType = "float64"
-		if c.IsNullable {
-			goType = "*float64"
-			isNullable = true
-		}
-	} else if c.IsTemporal() {
-		isTemporal = true
-		if !c.IsNullable {
-			goType = "time.Time"
-		} else {
-			goType = "*time.Time"
-			isNullable = true
-		}
-	} else {
-		switch c.DataType {
-		case "boolean":
-			goType = "bool"
-			if c.IsNullable {
-				goType = "*bool"
-				isNullable = true
-			}
-		default:
-			goType = "string"
-			if c.IsNullable {
-				goType = "*string"
-				isNullable = true
-			}
-		}
+	splitted := strings.Split(s, "_")
+
+	if len(splitted) == 1 {
+		return caser.String(s)
 	}
 
-	return Formatted{
-		text:       fmt.Sprintf("%s %s", columnName, goType),
-		isNullable: isNullable,
-		isTemporal: isTemporal,
-		tags:       "`parquet:\"" + c.Name + "\" db:\"" + c.Name + "\"`",
+	var cc string
+	for _, part := range splitted {
+		cc += caser.String(strings.ToLower(part))
 	}
+	return cc
 }

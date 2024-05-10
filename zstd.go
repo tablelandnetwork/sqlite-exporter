@@ -38,7 +38,7 @@ func Decompress(path string) (string, error) {
 		return nil
 	})
 
-	newFilepath := strings.TrimSuffix(path, "."+filepath.Ext(path))
+	newFilepath := strings.TrimSuffix(path, filepath.Ext(path))
 	df, err := os.OpenFile(newFilepath, os.O_CREATE|os.O_WRONLY, 0o755)
 	if err != nil {
 		return "", errors.Errorf("open new file: %s", err)

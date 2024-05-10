@@ -7,7 +7,7 @@ import (
 )
 
 func newExportCommand() *cli.Command {
-	var upload bool
+	var upload, decompress bool
 	var tables *cli.StringSlice
 	var machine, output string
 	return &cli.Command{
@@ -41,17 +41,25 @@ func newExportCommand() *cli.Command {
 				Destination: &output,
 				Value:       ".",
 			},
-			&cli.StringFlag{
-				Name:        "machine",
-				Category:    "REQUIRED:",
-				Usage:       "machine's hash",
-				DefaultText: "empty",
-				Destination: &machine,
-				Value:       "",
+			&cli.BoolFlag{
+				Name:        "decompress",
+				Aliases:     []string{"d"},
+				Category:    "OPTIONAL:",
+				Usage:       "Decompress a SQLite database compressed using zstd",
+				DefaultText: "false",
+				Destination: &decompress,
+				Value:       false,
 			},
 		},
 		Action: func(cCtx *cli.Context) error {
 			dbPath := cCtx.Args().First()
+			if decompress {
+				var err error
+				dbPath, err = Decompress(dbPath)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
 
 			db, err := NewSQLite(dbPath)
 			if err != nil {
@@ -67,7 +75,6 @@ func newExportCommand() *cli.Command {
 			}
 
 			tables := cCtx.StringSlice("tables")
-
 			exporter := NewDatabaseExporter(db, sink, output)
 			if len(tables) > 0 {
 				if err := exporter.ExportTables(cCtx.Context, tables); err != nil {

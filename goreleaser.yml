@@ -1,0 +1,82 @@
+# goreleaser.yml
+before:
+  hooks:
+  - go mod tidy
+
+env:
+  - CGO_ENABLED=1
+
+project_name: sqlite-exporter
+
+builds:
+- id: sqlite-exporter-darwin-amd64
+  binary: sqlite-exporter
+  main: .
+  goarch:
+    - amd64
+  goos:
+    - darwin
+  env:
+    - CC=o64-clang
+    - CXX=o64-clang++
+  flags: 
+    - -trimpath
+  ldflags:
+    - -s -w -X main.version={{.Version}} -X main.commit={{.FullCommit}} -X main.date={{.CommitDate}}
+- id: sqlite-exporter-darwin-arm64
+  binary: sqlite-exporter
+  main: .
+  goarch:
+    - arm64
+  goos:
+    - darwin   
+  env:
+    - CC=oa64-clang
+    - CXX=oa64-clang++
+  flags: 
+    - -trimpath
+  ldflags: 
+    - -s -w -X main.version={{.Version}} -X main.commit={{.FullCommit}} -X main.date={{.CommitDate}}
+- id: sqlite-exporter-linux-amd64
+  binary: sqlite-exporter
+  main: .
+  goarch: 
+    - amd64
+  goos:
+    - linux
+  env:      
+    - CC=x86_64-linux-gnu-gcc
+    - CXX=x86_64-linux-gnu-g++
+  flags:
+    - -trimpath
+  ldflags:
+    - -s -w -X main.version={{.Version}} -X main.commit={{.FullCommit}} -X main.date={{.CommitDate}}
+- id: sqlite-exporter-linux-arm64
+  binary: sqlite-exporter
+  main: .
+  goarch: 
+    - arm64
+  goos:
+    - linux
+  env:
+    - CC=aarch64-linux-gnu-gcc
+    - CXX=aarch64-linux-gnu-g++    
+  flags:
+    - -trimpath
+  ldflags:
+    - -s -w -X main.version={{.Version}} -X main.commit={{.FullCommit}} -X main.date={{.CommitDate}}
+
+archives:
+  - id: sqlite-exporter-archive
+    format: tar.gz
+    files:
+      - none*
+    builds:
+      - sqlite-exporter-darwin-amd64
+      - sqlite-exporter-darwin-arm64
+      - sqlite-exporter-linux-amd64
+      - sqlite-exporter-linux-arm64
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  disable: true
